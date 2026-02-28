@@ -1,12 +1,158 @@
-# React + Vite
+# TimeClock Pro
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A local-first employee time-tracking PWA built with React, Vite, and IndexedDB. Designed to run as a kiosk on a shared tablet — employees clock in/out with a PIN, managers administer everything from a protected admin panel.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Features
 
-## Expanding the ESLint configuration
+### Kiosk (employee-facing)
+- PIN pad + employee tile grid for fast clock-in/out
+- Per-employee status tiles (Clocked In / On Break / Clocked Out) with live elapsed timers
+- Customisable tile colours per store
+- Break overdue badge (amber coffee-cup icon) when a meal break is due
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### ClockFlow wizard
+Multi-step modal that runs every time an employee clocks in or out:
+1. Rules check (blocks / warnings)
+2. Legacy alert acknowledgment
+3. Structured notifications (admin-configured questions with conditional actions)
+4. Shift edit requests
+5. Break reminder (if shift exceeds threshold and no break taken)
+6. Action select (clock out / start break / end break)
+7. Break acknowledgment at clock-out (with optional penalty)
+8. Execution
+
+### Rules engine
+Priority-based settings: **global → store → role → user** (each level overrides the previous).
+
+| Rule | Configurable |
+|---|---|
+| Min rest between shifts | action: warn / block |
+| Daily hours limit | action: warn / block |
+| Weekly overtime threshold | action: warn / block |
+| Max consecutive working days | action: warn / block |
+| Auto sign-out after N hours | enabled / threshold |
+| Time rounding | 0 / 5 / 10 / 15 / 30 min |
+| Auto-deduct unpaid break | enabled / duration |
+| Daily OT threshold | hours |
+
+### Break compliance
+- Global reminder pop-up after configurable minutes on shift
+- Per-employee reminder toggle
+- Clock-out acknowledgment ("Did you take a break?")
+- Optional penalty minutes added to payable time if break was missed
+
+### Alert router (`src/alerts/alertRouter.js`)
+Routes system events to the in-app inbox of every eligible recipient (role must have `manage_alerts: true` + same store).
+
+Built-in event types: `missed_break`, `break_penalty_applied`, `auto_signout`, `rule_violation`, `overtime_warning`, `manager_override_required`, `short_shift`.
+
+Phase 2 stubs for email (SendGrid) and SMS (Twilio) are included — replace the `console.info` stubs with `fetch()` calls to your backend proxy.
+
+### Admin panel
+| Section | What it does |
+|---|---|
+| **Inbox** | View and dismiss system alerts; unread badge in sidebar |
+| **Users** | Create / edit / deactivate employees; set role, stores, PIN, break reminder toggle |
+| **Roles** | Create roles with granular permission maps |
+| **Stores** | Manage store locations |
+| **Notifications** | Admin-configured event-triggered notification templates with questions and conditional actions |
+| **Reports** | Timesheet, overtime summary, break compliance — with CSV download and print-to-PDF |
+| **Settings** | All rules, thresholds, and channel toggles in one place |
+
+### Reports
+- **Timesheet** — every shift in the period with gross / break / net / penalty columns and a totals footer
+- **Overtime summary** — per-employee regular vs daily-OT vs weekly-OT hours with a bar chart
+- **Break compliance** — completed shifts ≥ 6 hours showing missed breaks and applied penalties
+- Period presets: This Week / Last Week / This Month / Last Month / Custom
+- Employee filter
+- Export to CSV or print to PDF (no server required)
+
+---
+
+## Tech stack
+
+| Package | Purpose |
+|---|---|
+| Vite 6 + React 19 | Build tooling and UI |
+| Tailwind CSS v3 | Styling |
+| Dexie.js | IndexedDB ORM (local-first storage) |
+| date-fns | Date utilities |
+| react-router-dom | Client-side routing |
+| recharts | Bar charts in reports |
+| bcryptjs | PIN and password hashing |
+| vite-plugin-pwa + Workbox | PWA manifest and service worker |
+
+---
+
+## Getting started
+
+**Requirements:** Node.js ≥ 18
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser.
+
+### Seed accounts
+
+| Role | Email | Password | PIN |
+|---|---|---|---|
+| Super Admin | admin@timeclock.com | Admin1234! | 0000 |
+| Manager | manager@timeclock.com | Manager1234! | 1111 |
+| Employee | employee@timeclock.com | Employee1234! | 2222 |
+
+Seed data runs automatically on first load (skipped if the DB already has roles).
+
+### Build
+
+```bash
+npm run build   # outputs to dist/
+```
+
+---
+
+## Project structure
+
+```
+src/
+  alerts/         alertRouter.js — event → recipient routing
+  components/     ClockFlow, PinPad, ProtectedRoute
+  context/        AuthContext (email + password admin login)
+  db/             db.js (Dexie schema + seed), actions.js
+  engine/         breakCompliance.js, notifications.js, rules.js
+  pages/
+    KioskHome.jsx         employee-facing kiosk
+    admin/
+      AdminInbox.jsx
+      AdminLayout.jsx     sidebar + unread badge
+      AdminNotifications.jsx
+      AdminReports.jsx
+      AdminRoles.jsx
+      AdminSettings.jsx
+      AdminStores.jsx
+      AdminUsers.jsx
+  rules/          evaluator.js — priority-based rule loader + checks
+```
+
+---
+
+## PWA / offline
+
+The service worker (generated by Workbox) precaches all JS, CSS, HTML, and SVG assets so the app works fully offline after the first load. The manifest supports `display: standalone` for Add to Home Screen on Android and desktop Chrome.
+
+> **iOS note:** Safari requires a PNG `apple-touch-icon` for the home screen badge. Add a 180×180 PNG at `public/icon-180.png` and a `<link rel="apple-touch-icon">` in `index.html` if needed.
+
+---
+
+## Phase 2: email and SMS alerts
+
+The alert router includes stubs for external notification channels. To activate:
+
+1. Build a backend proxy endpoint (`POST /api/send-email`, `POST /api/send-sms`) that holds your SendGrid / Twilio credentials server-side.
+2. Replace the `console.info` stubs in `src/alerts/alertRouter.js` with `fetch()` calls to those endpoints.
+3. Set `alert_channel_email` and/or `alert_channel_sms` to `true` in Admin → Settings.
+4. For SMS, add a `phone` column to the `users` table and populate it.
