@@ -83,7 +83,7 @@ db.version(3).stores({
 // ─────────────────────────────────────────────
 // Seed data
 // ─────────────────────────────────────────────
-const SALT_ROUNDS = 10;
+const SALT_ROUNDS = 8;
 
 const ROLES = [
   {
@@ -232,9 +232,9 @@ const DEFAULT_SETTINGS = [
 ];
 
 export async function seedDatabase() {
-  // Guard: skip if already seeded
-  const roleCount = await db.roles.count();
-  if (roleCount > 0) return;
+  // Guard: skip if already seeded (check both roles and users)
+  const [roleCount, userCount] = await Promise.all([db.roles.count(), db.users.count()]);
+  if (roleCount > 0 && userCount > 0) return;
 
   await db.transaction(
     'rw',
