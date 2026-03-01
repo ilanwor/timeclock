@@ -1,17 +1,17 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
-  const { login, user } = useAuth()
+  const { login, user, loading: authLoading } = useAuth()
   const navigate        = useNavigate()
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
 
-  // Already logged in
-  if (user) { navigate('/dashboard', { replace: true }); return null }
+  // Already logged in — redirect declaratively (safe in React 18)
+  if (!authLoading && user) return <Navigate to="/admin" replace />
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -19,7 +19,7 @@ export default function Login() {
     setLoading(true)
     try {
       await login(email.trim().toLowerCase(), password)
-      navigate('/dashboard', { replace: true })
+      navigate('/admin', { replace: true })
     } catch (err) {
       setError(err.message)
     } finally {

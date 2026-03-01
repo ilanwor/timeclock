@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Outlet, NavLink, Link, useLocation } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { db } from '../../db/db'
 
@@ -29,6 +29,10 @@ const NAV = [
 export default function AdminLayout() {
   const { user, logout } = useAuth()
   const location         = useLocation()
+  const navigate         = useNavigate()
+
+  function handleBackToKiosk() { logout(); navigate('/') }
+  function handleSignOut()     { logout(); navigate('/') }
   const [unreadCount, setUnreadCount] = useState(0)
 
   // Reload unread count on every navigation so the badge stays fresh
@@ -99,16 +103,16 @@ export default function AdminLayout() {
               {user?.first_name} {user?.last_name}
             </p>
           </div>
-          <Link
-            to="/"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-400
+          <button
+            onClick={handleBackToKiosk}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-400
                        hover:text-white hover:bg-slate-800 transition-colors"
           >
             <Icon d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             Back to Kiosk
-          </Link>
+          </button>
           <button
-            onClick={logout}
+            onClick={handleSignOut}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm
                        text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
