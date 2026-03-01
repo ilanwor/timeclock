@@ -236,12 +236,24 @@ export async function seedDatabase() {
   const [roleCount, userCount] = await Promise.all([db.roles.count(), db.users.count()]);
   if (roleCount > 0 && userCount > 0) return;
 
+  // Pre-compute all bcrypt hashes BEFORE opening the transaction.
+  // IndexedDB transactions close if no DB op is queued within a single event-loop
+  // tick; bcrypt takes many ticks, so hashing inside a transaction causes
+  // TransactionInactiveError on the subsequent db.users.add() call.
+  const hashedUsers = await Promise.all(
+    USERS_SEED.map(async u => ({
+      ...u,
+      password_hash: await bcrypt.hash(u.password, SALT_ROUNDS),
+      pin_hash:      await bcrypt.hash(u.pin,      SALT_ROUNDS),
+    }))
+  );
+
+  const now = new Date().toISOString();
+
   await db.transaction(
     'rw',
     [db.stores, db.roles, db.users, db.settings, db.audit_log],
     async () => {
-      const now = new Date().toISOString();
-
       // 1. Insert stores
       const storeIds = [];
       for (const store of STORES_SEED) {
@@ -260,21 +272,16 @@ export async function seedDatabase() {
         roleMap[role.name] = id;
       }
 
-      // 3. Insert users (hash password + pin)
-      for (const u of USERS_SEED) {
-        const [password_hash, pin_hash] = await Promise.all([
-          bcrypt.hash(u.password, SALT_ROUNDS),
-          bcrypt.hash(u.pin, SALT_ROUNDS),
-        ]);
-
+      // 3. Insert users (hashes already computed above)
+      for (const u of hashedUsers) {
         await db.users.add({
           store_id:      storeIds[u.store_index],
           role_id:       roleMap[u.role_name],
           first_name:    u.first_name,
           last_name:     u.last_name,
           email:         u.email,
-          password_hash,
-          pin_hash,
+          password_hash: u.password_hash,
+          pin_hash:      u.pin_hash,
           is_active:     1,
           created_at:    now,
           updated_at:    now,
