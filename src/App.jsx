@@ -12,6 +12,7 @@ import AdminSettings      from './pages/admin/AdminSettings'
 import AdminNotifications from './pages/admin/AdminNotifications'
 import AdminReports       from './pages/admin/AdminReports'
 import AdminInbox         from './pages/admin/AdminInbox'
+import AdminTimeEntries   from './pages/admin/AdminTimeEntries'
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="users"    element={<AdminUsers />} />
             <Route path="roles"    element={<AdminRoles />} />
             <Route path="stores"   element={<AdminStores />} />
+            <Route path="time-entries"  element={<AdminTimeEntries />} />
             <Route path="notifications" element={<AdminNotifications />} />
             <Route path="settings"       element={<AdminSettings />} />
             <Route path="reports"        element={<AdminReports />} />

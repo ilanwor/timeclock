@@ -17,12 +17,15 @@
  */
 
 import { useState, useEffect }                     from 'react'
+import { format, parseISO }                        from 'date-fns'
 import { runClockInRules, runClockOutRules }        from '../engine/rules'
 import { getPendingAlerts, respondToAlert,
          getActiveNotificationsForTrigger,
-         saveNotificationResponse }                 from '../engine/notifications'
+         saveNotificationResponse,
+         getPendingShiftReviews }                  from '../engine/notifications'
 import { checkBreakStatus, applyBreakPenalty }      from '../engine/breakCompliance'
 import { clockIn, clockOut, startBreak, endBreak }  from '../db/actions'
+import { db, writeAuditLog }                       from '../db/db'
 
 // ── Icon helper ────────────────────────────────────────────────────────────
 function Icon({ path, className = 'w-6 h-6' }) {
@@ -523,11 +526,71 @@ function ActionSelectView({ employee, onAction, onCancel, busy, minBreakRemainin
   )
 }
 
+// ── Shift review — employee agree/disagree to an edited shift ──────────────
+function ShiftReviewView({ review, index, total, onAgree, onDisagree, busy }) {
+  const origIn  = review.original_clock_in  ? format(parseISO(review.original_clock_in),  'h:mm a, MMM d yyyy') : null
+  const origOut = review.original_clock_out ? format(parseISO(review.original_clock_out), 'h:mm a') : null
+  const newIn   = format(parseISO(review.clock_in), 'h:mm a, MMM d yyyy')
+  const newOut  = review.clock_out ? format(parseISO(review.clock_out), 'h:mm a') : 'Open'
+  const editor  = review.editor ? `${review.editor.first_name} ${review.editor.last_name}` : 'A manager'
+
+  return (
+    <ModalCard>
+      <ModalHeader
+        icon={<Icon path={ICONS.edit} className="w-7 h-7 text-white" />}
+        iconBg="bg-blue-600"
+        title="Shift Edit — Review Required"
+        subtitle={`${editor} edited one of your shifts`}
+      />
+      <div className="p-6 overflow-y-auto space-y-4">
+        {origIn && (
+          <div className="bg-slate-900/60 border border-slate-700 rounded-xl p-4 space-y-1">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Original</p>
+            <p className="text-sm text-slate-300">In:  <span className="font-mono">{origIn}</span></p>
+            {origOut && <p className="text-sm text-slate-300">Out: <span className="font-mono">{origOut}</span></p>}
+          </div>
+        )}
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 space-y-1">
+          <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Updated</p>
+          <p className="text-sm text-white">In:  <span className="font-mono">{newIn}</span></p>
+          <p className="text-sm text-white">Out: <span className="font-mono">{newOut}</span></p>
+          {review.edit_notes && (
+            <p className="text-xs text-slate-400 mt-2 italic">"{review.edit_notes}"</p>
+          )}
+        </div>
+        <p className="text-xs text-slate-500">
+          If you disagree, the editor will be notified to review and revise the shift.
+        </p>
+        <ProgressDots current={index} total={total} />
+      </div>
+      <div className="p-6 pt-2 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <BigBtn
+            label={busy === 'agree' ? 'Saving…' : 'Agree'}
+            color="bg-emerald-600 hover:bg-emerald-500"
+            icon={<Icon path={ICONS.checkCircle} className="w-5 h-5" />}
+            onClick={onAgree}
+            disabled={!!busy}
+          />
+          <BigBtn
+            label={busy === 'disagree' ? 'Saving…' : 'Disagree'}
+            color="bg-red-700 hover:bg-red-600"
+            onClick={onDisagree}
+            disabled={!!busy}
+          />
+        </div>
+      </div>
+    </ModalCard>
+  )
+}
+
 // ── Main ClockFlow component ───────────────────────────────────────────────
 export default function ClockFlow({ employee, storeId, onDone, onCancel }) {
   const [step,           setStep]           = useState('loading')
   const [blockRules,     setBlockRules]     = useState([])
   const [warnRules,      setWarnRules]      = useState([])
+  const [shiftReviews,   setShiftReviews]   = useState([])
+  const [reviewIdx,      setReviewIdx]      = useState(0)
   const [notifications,  setNotifications]  = useState([])
   const [notifIdx,       setNotifIdx]       = useState(0)
   const [shiftEdits,     setShiftEdits]     = useState([])
@@ -543,7 +606,7 @@ export default function ClockFlow({ employee, storeId, onDone, onCancel }) {
       const trigger = employee.status === 'clocked_out' ? 'clock_in'  :
                       employee.status === 'on_break'    ? 'end_break'  : 'clock_out'
 
-      const [rules, alerts, structuredNotifs, brkStatus] = await Promise.all([
+      const [rules, alerts, structuredNotifs, brkStatus, shiftRevs] = await Promise.all([
         employee.status === 'clocked_out'
           ? runClockInRules(employee.user, storeId)
           : runClockOutRules(employee.user, employee.openEntry, storeId),
@@ -553,6 +616,10 @@ export default function ClockFlow({ employee, storeId, onDone, onCancel }) {
           ? checkBreakStatus(employee.openEntry, storeId, employee.user)
           : Promise.resolve({ shouldRemindBreak: false, needsBreakAck: false,
               hasBreak: false, penaltyEnabled: false, penaltyMinutes: 60, shiftMinutes: 0 }),
+        // Only show shift reviews on clock-in so employee can see pending edits first
+        employee.status === 'clocked_out'
+          ? getPendingShiftReviews(employee.user.id)
+          : Promise.resolve([]),
       ])
 
       const blocks = rules.filter(r => r.type === 'block')
@@ -560,12 +627,15 @@ export default function ClockFlow({ employee, storeId, onDone, onCancel }) {
 
       setBlockRules(blocks)
       setWarnRules(warns)
+      setShiftReviews(shiftRevs)
+      setReviewIdx(0)
       setNotifications(alerts.notifications)
       setShiftEdits(alerts.shiftEdits)
       setStructNotifs(structuredNotifs)
       setBreakStatus(brkStatus)
 
       if (blocks.length)                       setStep('blocked')
+      else if (shiftRevs.length)               setStep('shift_review')
       else if (warns.length)                   setStep('warning')
       else if (alerts.notifications.length)    setStep('notification')
       else if (alerts.shiftEdits.length)       setStep('shift_edit')
@@ -602,6 +672,16 @@ export default function ClockFlow({ employee, storeId, onDone, onCancel }) {
     else goToBreakReminderOrAction()
   }
 
+  function advanceAfterReview(idx) {
+    const next = idx + 1
+    if (next < shiftReviews.length)  { setReviewIdx(next) }
+    else if (warnRules.length)       { setStep('warning') }
+    else if (notifications.length)   { setStep('notification');            setNotifIdx(0) }
+    else if (shiftEdits.length)      { setStep('shift_edit');             setEditIdx(0) }
+    else if (structNotifs.length)    { setStep('structured_notification'); setStructNotifIdx(0) }
+    else goToBreakReminderOrAction()
+  }
+
   function advanceAfterShiftEdit(idx) {
     const next = idx + 1
     if (next < shiftEdits.length)  { setEditIdx(next) }
@@ -616,6 +696,78 @@ export default function ClockFlow({ employee, storeId, onDone, onCancel }) {
   }
 
   // ── Response handlers ─────────────────────────────────────────────────────
+  async function handleReviewAgree() {
+    setBusy('agree')
+    try {
+      const review = shiftReviews[reviewIdx]
+      const now    = new Date().toISOString()
+
+      await db.time_entries.update(review.id, { edit_status: 'approved', updated_at: now })
+
+      // Mark the pending alert as read
+      const alerts = await db.alerts
+        .filter(a => a.type === 'shift_edit_pending' && a.entity_id === review.id && !a.is_read)
+        .toArray()
+      await Promise.all(alerts.map(a => db.alerts.update(a.id, { is_read: 1 })))
+
+      await writeAuditLog({
+        userId:     employee.user.id,
+        storeId,
+        action:     'approve_shift_edit',
+        entityType: 'time_entry',
+        entityId:   review.id,
+        newValue:   { edit_status: 'approved' },
+      })
+
+      advanceAfterReview(reviewIdx)
+    } finally { setBusy(false) }
+  }
+
+  async function handleReviewDisagree() {
+    setBusy('disagree')
+    try {
+      const review = shiftReviews[reviewIdx]
+      const now    = new Date().toISOString()
+
+      await db.time_entries.update(review.id, { edit_status: 'disputed', updated_at: now })
+
+      // Mark the pending alert as read
+      const alerts = await db.alerts
+        .filter(a => a.type === 'shift_edit_pending' && a.entity_id === review.id && !a.is_read)
+        .toArray()
+      await Promise.all(alerts.map(a => db.alerts.update(a.id, { is_read: 1 })))
+
+      // Notify the editor
+      if (review.edited_by_user_id) {
+        const editDate = format(parseISO(review.clock_in), 'MMM d, yyyy')
+        await db.alerts.add({
+          store_id:           storeId,
+          created_by_user_id: employee.user.id,
+          target_role_id:     null,
+          target_user_id:     review.edited_by_user_id,
+          type:               'shift_edit_disputed',
+          title:              'Shift Edit Disputed',
+          message:            `${employee.user.first_name} ${employee.user.last_name} disagreed with the edit to their shift on ${editDate}. Please review and re-edit if needed.`,
+          is_read:            0,
+          entity_id:          review.id,
+          created_at:         now,
+          expires_at:         null,
+        })
+      }
+
+      await writeAuditLog({
+        userId:     employee.user.id,
+        storeId,
+        action:     'dispute_shift_edit',
+        entityType: 'time_entry',
+        entityId:   review.id,
+        newValue:   { edit_status: 'disputed' },
+      })
+
+      advanceAfterReview(reviewIdx)
+    } finally { setBusy(false) }
+  }
+
   async function handleNotifResponse(response) {
     setBusy(true)
     try {
@@ -714,6 +866,18 @@ export default function ClockFlow({ employee, storeId, onDone, onCancel }) {
 
   if (step === 'blocked')
     return <BlockedView rules={blockRules} onClose={onCancel} />
+
+  if (step === 'shift_review')
+    return (
+      <ShiftReviewView
+        review={shiftReviews[reviewIdx]}
+        index={reviewIdx}
+        total={shiftReviews.length}
+        onAgree={handleReviewAgree}
+        onDisagree={handleReviewDisagree}
+        busy={busy}
+      />
+    )
 
   if (step === 'warning')
     return <WarningView rules={warnRules} onProceed={advanceAfterWarning} onCancel={onCancel} />

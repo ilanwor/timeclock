@@ -72,6 +72,11 @@ db.version(2).stores({
   })
 );
 
+// ── v4: index edit_status on time_entries for pending-review queries ─────────
+db.version(4).stores({
+  time_entries: '++id, user_id, store_id, clock_in, clock_out, status, edit_status, created_at',
+});
+
 // ── v3: structured notification templates + extend notification_responses ───
 // notifications: admin-created event-triggered prompts with questions + actions.
 // notification_responses: gains notification_id index for structured responses.

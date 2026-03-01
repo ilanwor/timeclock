@@ -151,6 +151,7 @@ function buildTimesheetRows(entries, breaksByEntry, usersById) {
         clockOut: clockOut ? format(clockOut, 'h:mm a') : 'Open',
         status:   e.clock_out ? 'Completed' : 'Open',
         grossMins, breakMins, netMins, penalty,
+        editStatus: e.edit_status ?? null,
       }
     })
     .filter(Boolean)
@@ -331,9 +332,9 @@ export default function AdminReports() {
   function exportTimesheetCSV() {
     downloadCSV(
       `timesheet_${format(rangeFrom, 'yyyy-MM-dd')}.csv`,
-      ['Employee', 'Date', 'Clock In', 'Clock Out', 'Status', 'Gross', 'Break', 'Net', 'Penalty'],
+      ['Employee', 'Date', 'Clock In', 'Clock Out', 'Status', 'Edit Status', 'Gross', 'Break', 'Net', 'Penalty'],
       timesheetRows.map(r => [
-        r.name, r.date, r.clockIn, r.clockOut, r.status,
+        r.name, r.date, r.clockIn, r.clockOut, r.status, r.editStatus || '',
         fmtMins(r.grossMins), fmtMins(r.breakMins), fmtMins(r.netMins), r.penalty ? fmtMins(r.penalty) : '',
       ])
     )
@@ -342,9 +343,9 @@ export default function AdminReports() {
   function exportTimesheetPDF() {
     printTable(
       'Timesheet Report', rangeLabel,
-      ['Employee', 'Date', 'Clock In', 'Clock Out', 'Status', 'Gross', 'Break', 'Net', 'Penalty'],
+      ['Employee', 'Date', 'Clock In', 'Clock Out', 'Status', 'Edit Status', 'Gross', 'Break', 'Net', 'Penalty'],
       timesheetRows.map(r => [
-        r.name, r.date, r.clockIn, r.clockOut, r.status,
+        r.name, r.date, r.clockIn, r.clockOut, r.status, r.editStatus || '',
         fmtMins(r.grossMins), fmtMins(r.breakMins), fmtMins(r.netMins), r.penalty ? fmtMins(r.penalty) : '',
       ])
     )
@@ -510,6 +511,7 @@ export default function AdminReports() {
                         <TH>Clock In</TH>
                         <TH>Clock Out</TH>
                         <TH>Status</TH>
+                        <TH>Edit</TH>
                         <TH right>Gross</TH>
                         <TH right>Break</TH>
                         <TH right>Net</TH>
@@ -518,7 +520,7 @@ export default function AdminReports() {
                     </thead>
                     <tbody>
                       {timesheetRows.map((r, i) => (
-                        <tr key={i} className="hover:bg-slate-700/30 transition-colors">
+                        <tr key={i} className={`transition-colors ${r.editStatus ? 'bg-blue-900/20 hover:bg-blue-900/30' : 'hover:bg-slate-700/30'}`}>
                           <TD>{r.name}</TD>
                           <TD mono>{r.date}</TD>
                           <TD mono>{r.clockIn}</TD>
@@ -527,6 +529,20 @@ export default function AdminReports() {
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
                               r.status === 'Open' ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'
                             }`}>{r.status}</span>
+                          </TD>
+                          <TD>
+                            {r.editStatus && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                r.editStatus === 'pending_review' ? 'bg-blue-500/20 text-blue-400' :
+                                r.editStatus === 'approved'       ? 'bg-emerald-500/20 text-emerald-400' :
+                                r.editStatus === 'disputed'       ? 'bg-red-500/20 text-red-400' :
+                                'bg-slate-700 text-slate-400'
+                              }`}>
+                                {r.editStatus === 'pending_review' ? 'Pending' :
+                                 r.editStatus === 'approved'       ? 'Approved' :
+                                 r.editStatus === 'disputed'       ? 'Disputed' : r.editStatus}
+                              </span>
+                            )}
                           </TD>
                           <TD right mono>{r.grossMins != null ? fmtMins(r.grossMins) : '—'}</TD>
                           <TD right mono>{fmtMins(r.breakMins)}</TD>
@@ -545,7 +561,7 @@ export default function AdminReports() {
                       return (
                         <tfoot>
                           <tr className="bg-slate-900/60 font-semibold text-white">
-                            <td className="px-4 py-3 text-xs text-slate-400 border-t-2 border-slate-600" colSpan={5}>
+                            <td className="px-4 py-3 text-xs text-slate-400 border-t-2 border-slate-600" colSpan={6}>
                               Totals ({completed.length} completed shifts)
                             </td>
                             <td className="px-4 py-3 text-sm text-right font-mono border-t-2 border-slate-600">{fmtMins(totalGross)}</td>

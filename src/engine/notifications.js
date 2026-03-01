@@ -9,6 +9,27 @@
 
 import { db, writeAuditLog } from '../db/db'
 
+// ── Shift review helpers ───────────────────────────────────────────────────
+
+/**
+ * Returns time entries with edit_status === 'pending_review' for this employee,
+ * enriched with the editor's user record for display in ShiftReviewView.
+ */
+export async function getPendingShiftReviews(userId) {
+  const entries = await db.time_entries
+    .where('user_id').equals(userId)
+    .filter(e => e.edit_status === 'pending_review')
+    .toArray()
+
+  if (!entries.length) return []
+
+  const editorIds   = [...new Set(entries.map(e => e.edited_by_user_id).filter(Boolean))]
+  const editors     = await Promise.all(editorIds.map(id => db.users.get(id)))
+  const editorsById = Object.fromEntries(editors.filter(Boolean).map(e => [e.id, e]))
+
+  return entries.map(e => ({ ...e, editor: editorsById[e.edited_by_user_id] ?? null }))
+}
+
 // ── Legacy alert helpers ───────────────────────────────────────────────────
 
 /**
@@ -35,8 +56,11 @@ export async function getPendingAlerts(userId, roleId, storeId) {
   const respondedIds = new Set(responses.filter(r => r.alert_id != null).map(r => r.alert_id))
   const pending      = allAlerts.filter(a => !respondedIds.has(a.id))
 
+  // shift_edit_pending / shift_edit_disputed are handled via the shift_review step
+  // (driven by time_entries directly) or the admin inbox — not the kiosk notification flow.
+  const REVIEW_TYPES = new Set(['shift_edit_pending', 'shift_edit_disputed'])
   return {
-    notifications: pending.filter(a => a.type !== 'shift_edit'),
+    notifications: pending.filter(a => a.type !== 'shift_edit' && !REVIEW_TYPES.has(a.type)),
     shiftEdits:    pending.filter(a => a.type === 'shift_edit'),
   }
 }
