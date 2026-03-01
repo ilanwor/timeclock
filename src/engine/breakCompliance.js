@@ -29,12 +29,14 @@ export async function checkBreakStatus(openEntry, storeId, user) {
     penaltyEnabled:    false,
     penaltyMinutes:    60,
     shiftMinutes:      0,
+    minBreakRemaining: 0,
   }
   if (!openEntry) return empty
 
   const rules  = await loadRulesForContext(user.id, storeId, user.role_id)
   const breaks = await db.breaks.where('time_entry_id').equals(openEntry.id).toArray()
-  const hasBreak = breaks.some(b => b.break_end != null)
+  const hasBreak      = breaks.some(b => b.break_end != null)
+  const openBreakRec  = breaks.find(b => b.break_end === null)
 
   const shiftMinutes = (Date.now() - new Date(openEntry.clock_in).getTime()) / 60_000
 
@@ -56,7 +58,15 @@ export async function checkBreakStatus(openEntry, storeId, user) {
   const penaltyEnabled = rules['break_penalty_enabled'] === 'true'
   const penaltyMinutes = parseInt(rules['break_penalty_minutes'] || '60', 10)
 
-  return { shouldRemindBreak, needsBreakAck, hasBreak, penaltyEnabled, penaltyMinutes, shiftMinutes }
+  // ── Minimum break duration (employee cannot end break early) ───────────
+  const minBreakMins = parseInt(rules['unpaid_break_minutes'] || '30', 10)
+  let minBreakRemaining = 0
+  if (openBreakRec) {
+    const elapsedBreakMins = (Date.now() - new Date(openBreakRec.break_start).getTime()) / 60_000
+    minBreakRemaining = Math.max(0, Math.ceil(minBreakMins - elapsedBreakMins))
+  }
+
+  return { shouldRemindBreak, needsBreakAck, hasBreak, penaltyEnabled, penaltyMinutes, shiftMinutes, minBreakRemaining }
 }
 
 /**

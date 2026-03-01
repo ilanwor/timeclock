@@ -463,7 +463,7 @@ function ConfirmClockInView({ user, onConfirm, onCancel, busy }) {
   )
 }
 
-function ActionSelectView({ employee, onAction, onCancel, busy }) {
+function ActionSelectView({ employee, onAction, onCancel, busy, minBreakRemaining }) {
   const { user, status, since } = employee
   const elapsed = since
     ? (() => {
@@ -495,13 +495,20 @@ function ActionSelectView({ employee, onAction, onCancel, busy }) {
           />
         )}
         {status === 'on_break' && (
-          <BigBtn
-            label={busy === 'end_break' ? 'Ending Break…' : 'End Break'}
-            color="bg-blue-600 hover:bg-blue-500"
-            icon={<Icon path={ICONS.checkCircle} className="w-5 h-5" />}
-            onClick={() => onAction('end_break')}
-            disabled={!!busy}
-          />
+          <div>
+            <BigBtn
+              label={busy === 'end_break' ? 'Ending Break…' : 'End Break'}
+              color="bg-blue-600 hover:bg-blue-500"
+              icon={<Icon path={ICONS.checkCircle} className="w-5 h-5" />}
+              onClick={() => onAction('end_break')}
+              disabled={!!busy || minBreakRemaining > 0}
+            />
+            {minBreakRemaining > 0 && (
+              <p className="text-center text-amber-400 text-xs mt-2">
+                Minimum break is 30 min — {minBreakRemaining} min remaining
+              </p>
+            )}
+          </div>
         )}
         <BigBtn
           label={busy === 'clock_out' ? 'Clocking Out…' : 'Clock Out'}
@@ -775,6 +782,7 @@ export default function ClockFlow({ employee, storeId, onDone, onCancel }) {
         onAction={handleAction}
         onCancel={onCancel}
         busy={busy}
+        minBreakRemaining={breakStatus?.minBreakRemaining ?? 0}
       />
     )
 
