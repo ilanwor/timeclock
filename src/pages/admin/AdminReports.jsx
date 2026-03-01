@@ -95,13 +95,18 @@ async function fetchAll(fromDate, toDate) {
     db.time_entries.toArray(),
     db.breaks.toArray(),
     db.settings.where('store_id').equals(0)
-      .filter(r => r.key === 'rule_daily_ot_threshold' || r.key === 'overtime_threshold')
+      .filter(r =>
+        r.key === 'rule_daily_ot_threshold' ||
+        r.key === 'overtime_threshold'      ||
+        r.key === 'break_required_after'
+      )
       .toArray(),
   ])
 
-  const settingsMap = Object.fromEntries(settings.map(r => [r.key, r.value]))
-  const dailyOtHrs  = parseFloat(settingsMap['rule_daily_ot_threshold'] || '8')
-  const weeklyOtHrs = parseFloat(settingsMap['overtime_threshold']      || '40')
+  const settingsMap      = Object.fromEntries(settings.map(r => [r.key, r.value]))
+  const dailyOtHrs       = parseFloat(settingsMap['rule_daily_ot_threshold'] || '8')
+  const weeklyOtHrs      = parseFloat(settingsMap['overtime_threshold']      || '40')
+  const breakRequiredHrs = parseFloat(settingsMap['break_required_after']    || '6')
 
   const interval = { start: fromDate, end: toDate }
 
@@ -121,7 +126,7 @@ async function fetchAll(fromDate, toDate) {
   // Index users by id
   const usersById = Object.fromEntries(users.map(u => [u.id, u]))
 
-  return { entries, breaksByEntry, usersById, dailyOtHrs, weeklyOtHrs }
+  return { entries, breaksByEntry, usersById, dailyOtHrs, weeklyOtHrs, breakRequiredHrs }
 }
 
 // ── Timesheet rows ─────────────────────────────────────────────────────────
@@ -186,8 +191,8 @@ function buildOvertimeSummary(entries, breaksByEntry, usersById, dailyOtHrs, wee
 }
 
 // ── Break compliance rows ──────────────────────────────────────────────────
-function buildBreakComplianceRows(entries, breaksByEntry, usersById) {
-  const requiredAfterMins = 6 * 60  // default 6 hrs — could load from settings
+function buildBreakComplianceRows(entries, breaksByEntry, usersById, breakRequiredHrs) {
+  const requiredAfterMins = breakRequiredHrs * 60
 
   return entries
     .filter(e => {
@@ -301,7 +306,7 @@ export default function AdminReports() {
 
   const breakRows = useMemo(() => {
     if (!data) return []
-    const rows = buildBreakComplianceRows(data.entries, data.breaksByEntry, data.usersById)
+    const rows = buildBreakComplianceRows(data.entries, data.breaksByEntry, data.usersById, data.breakRequiredHrs)
     return filterUserId === 'all' ? rows : rows.filter(r => {
       const uid = parseInt(filterUserId, 10)
       const u   = data.usersById[uid]
@@ -647,7 +652,7 @@ export default function AdminReports() {
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-700">
                 <div>
                   <h2 className="font-semibold text-white text-sm">
-                    Break Compliance — shifts ≥ 6 hours
+                    Break Compliance — shifts ≥ {data?.breakRequiredHrs ?? 6} hours
                   </h2>
                   {breakRows.length > 0 && (() => {
                     const missed   = breakRows.filter(r => !r.hadBreak).length

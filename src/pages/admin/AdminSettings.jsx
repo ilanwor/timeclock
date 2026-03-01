@@ -70,7 +70,7 @@ const SCHEMA = [
     group: 'PIN Policy',
     scope: 'global',
     keys: [
-      { key: 'pin_length', label: 'Minimum PIN Length (digits)', type: 'number', default: '7' },
+      { key: 'pin_length', label: 'Minimum PIN Length (digits)', type: 'number', default: '4' },
     ],
   },
   {
@@ -212,6 +212,9 @@ export default function AdminSettings() {
     setSaving(true)
     try {
       for (const group of SCHEMA) {
+        // Skip store-scoped groups when viewing Global defaults (storeId=0)
+        // — writing store-scoped keys with sid=0 would corrupt global settings
+        if (group.scope === 'store' && storeId === 0) continue
         const sid = group.scope === 'store' ? storeId : 0
         for (const def of group.keys) {
           if (values[def.key] !== undefined) {

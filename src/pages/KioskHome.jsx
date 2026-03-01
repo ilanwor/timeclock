@@ -156,7 +156,7 @@ export default function KioskHome() {
       const match = await findUserByPin(enteredPin, pool)
       if (!match) {
         setPinState('error')
-        setPinError('PIN not recognised. Try again.')
+        setPinError('PIN not recognized. Try again.')
         setTimeout(() => { setPin(''); setPinState('idle'); setPinError('') }, 1800)
         return
       }

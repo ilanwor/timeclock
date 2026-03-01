@@ -24,7 +24,8 @@ export async function clockIn(userId, storeId) {
 
 // ── Clock Out ──────────────────────────────────────────────────────────────
 export async function clockOut(entryId, userId, storeId) {
-  const entry   = await db.time_entries.get(entryId)
+  const entry = await db.time_entries.get(entryId)
+  if (!entry) throw new Error(`Time entry ${entryId} not found.`)
   const now     = new Date().toISOString()
   const minutes = Math.round((new Date(now) - new Date(entry.clock_in)) / 60000)
 
@@ -71,7 +72,8 @@ export async function startBreak(entryId, userId, breakType = 'unpaid') {
 
 // ── End Break ──────────────────────────────────────────────────────────────
 export async function endBreak(breakId, userId, storeId) {
-  const brk     = await db.breaks.get(breakId)
+  const brk = await db.breaks.get(breakId)
+  if (!brk) throw new Error(`Break ${breakId} not found.`)
   const now     = new Date().toISOString()
   const minutes = Math.round((new Date(now) - new Date(brk.break_start)) / 60000)
 

@@ -16,7 +16,9 @@ export function AuthProvider({ children }) {
         setUser(user)
         setRole(role)
       }
-    } catch (_) {}
+    } catch (_) {
+      sessionStorage.removeItem('tc_admin')
+    }
     setLoading(false)
   }, [])
 

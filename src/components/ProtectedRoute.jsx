@@ -15,7 +15,7 @@ export default function ProtectedRoute({ children, requiredPermission }) {
   if (!user) return <Navigate to="/login" replace />
 
   if (requiredPermission && !user.permissions?.[requiredPermission]) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to="/" replace />
   }
 
   return children

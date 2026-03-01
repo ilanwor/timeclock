@@ -61,7 +61,7 @@ function UserForm({ editing, roles, stores, onSave, onClose, saving }) {
     if (!isEdit && !form.pin)       e.pin = 'Required for new users'
     if (form.pin) {
       if (!/^\d+$/.test(form.pin))           e.pin = 'Digits only'
-      else if (form.pin.length < 7)          e.pin = 'Min 7 digits'
+      else if (form.pin.length < 4)          e.pin = 'Min 4 digits'
       else if (form.pin.length > 10)         e.pin = 'Max 10 digits'
       else if (form.pin !== form.pin_confirm) e.pin_confirm = 'PINs do not match'
     }
@@ -135,13 +135,13 @@ function UserForm({ editing, roles, stores, onSave, onClose, saving }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>
-                PIN (7–10 digits) {!isEdit && <span className="text-red-400">*</span>}
+                PIN (4–10 digits) {!isEdit && <span className="text-red-400">*</span>}
                 {isEdit && <span className="text-slate-500 font-normal text-xs"> (blank = keep)</span>}
               </label>
               <input type="password" inputMode="numeric" maxLength={10}
                 className={inputCls} value={form.pin}
                 onChange={e => set('pin', e.target.value.replace(/\D/g, ''))}
-                placeholder="7–10 digits" />
+                placeholder="4–10 digits" />
               {errors.pin && <p className="text-red-400 text-xs mt-1">{errors.pin}</p>}
             </div>
             <div>
